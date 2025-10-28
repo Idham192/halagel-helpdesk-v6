@@ -1,0 +1,497 @@
+import React, { useState, useEffect } from 'react';
+import { Clock, CheckCircle, AlertCircle, Plus, X, Lock, LogOut, Settings } from 'lucide-react';
+
+const HelpdeskSystem = () => {
+  const [tickets, setTickets] = useState([]);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [adminPassword, setAdminPassword] = useState('admin123');
+  const [newPassword, setNewPassword] = useState('');
+  const [scriptUrl, setScriptUrl] = useState('https://script.google.com/macros/s/AKfycbzYh2spcQZWgMUE8HnQSY_H6m3c227R4E5lZ2KxhPEIWrqQRQ8m1nUavgQd82UGKcVv/exec');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState({ text: '', type: '' });
+  
+  const [newTicket, setNewTicket] = useState({
+    email: '',
+    fullName: '',
+    department: '',
+    requestType: '',
+    priority: '',
+    description: '',
+    preferredTime: ''
+  });
+
+  const departments = ['HR', 'Finance', 'Sales', 'Admin', 'Koop', 'Engineering', 'Production', 'SCM', 'R&D', 'Creative', 'QA/QC', 'Warehouse'];
+  
+  const requestTypes = [
+    { value: 'Hardware Issue', label: '🖥️ Hardware Issue' },
+    { value: 'Software Issue', label: '💾 Software Issue' },
+    { value: 'Network Problem', label: '🌐 Network Problem' },
+    { value: 'Email Issue', label: '📧 Email Issue' },
+    { value: 'Access Request', label: '🔑 Access Request' },
+    { value: 'New Equipment', label: '🆕 New Equipment' },
+    { value: 'Password Reset', label: '🔒 Password Reset' },
+    { value: 'Printer Issue', label: '🖨️ Printer Issue' },
+    { value: 'Other', label: '📋 Other' }
+  ];
+
+  useEffect(() => {
+    const savedAdminStatus = sessionStorage.getItem('halagel-admin-status');
+    if (savedAdminStatus === 'true') {
+      setIsAdmin(true);
+    }
+
+    loadTickets();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => loadTickets(), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const showMessage = (text, type) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+  };
+
+  const loadTickets = async () => {
+    try {
+      const response = await fetch(scriptUrl + '?action=getTickets');
+      const data = await response.json();
+      
+      if (data.success) {
+        setTickets(data.tickets || []);
+      }
+    } catch (error) {
+      console.error('Error loading tickets:', error);
+    }
+  };
+
+  const handleLogin = () => {
+    if (loginPassword === adminPassword) {
+      setIsAdmin(true);
+      setShowLogin(false);
+      setLoginPassword('');
+      sessionStorage.setItem('halagel-admin-status', 'true');
+      showMessage('✓ Logged in successfully', 'success');
+    } else {
+      showMessage('Incorrect password!', 'error');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    sessionStorage.removeItem('halagel-admin-status');
+    showMessage('Logged out', 'success');
+  };
+
+  const saveSettings = () => {
+    if (newPassword.length >= 6) {
+      setAdminPassword(newPassword);
+      setNewPassword('');
+      setShowSettings(false);
+      showMessage('Password changed successfully!', 'success');
+    } else {
+      showMessage('Password must be at least 6 characters', 'error');
+    }
+  };
+
+  const createTicket = async () => {
+    if (!newTicket.email || !newTicket.fullName || !newTicket.department || 
+        !newTicket.requestType || !newTicket.priority || !newTicket.description) {
+      showMessage('Please fill in all required fields', 'error');
+      return;
+    }
+
+    setLoading(true);
+
+    const ticketData = {
+      ...newTicket,
+      status: 'Waiting',
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      const formData = new FormData();
+      formData.append('action', 'create');
+      formData.append('data', JSON.stringify(ticketData));
+
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setNewTicket({
+          email: '',
+          fullName: '',
+          department: '',
+          requestType: '',
+          priority: '',
+          description: '',
+          preferredTime: ''
+        });
+        showMessage('✅ Ticket submitted successfully!', 'success');
+        loadTickets();
+      } else {
+        showMessage('Failed to submit ticket: ' + (result.error || 'Unknown error'), 'error');
+      }
+    } catch (error) {
+      showMessage('Error submitting ticket. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStatus = async (ticketId, newStatus) => {
+    if (!isAdmin) {
+      showMessage('Only admin can update status!', 'error');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('action', 'update');
+      formData.append('id', ticketId);
+      formData.append('status', newStatus);
+
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showMessage('Ticket updated to ' + newStatus, 'success');
+        loadTickets();
+      } else {
+        showMessage('Failed to update ticket', 'error');
+      }
+    } catch (error) {
+      showMessage('Error updating ticket', 'error');
+    }
+  };
+
+  const filterByStatus = (status) => {
+    return tickets.filter(ticket => ticket.status === status).length;
+  };
+
+  const getPriorityColor = (priority) => {
+    if (priority === 'High') return 'border-l-red-500';
+    if (priority === 'Medium') return 'border-l-orange-500';
+    return 'border-l-green-500';
+  };
+
+  const getStatusColor = (status) => {
+    if (status === 'Waiting') return 'bg-gradient-to-r from-yellow-400 to-orange-400';
+    if (status === 'In Progress') return 'bg-gradient-to-r from-blue-400 to-cyan-400';
+    return 'bg-gradient-to-r from-green-400 to-emerald-400';
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-600 via-green-700 to-green-800 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-8 mb-8 text-center border border-white/30">
+          <div className="flex justify-center items-center gap-6 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 140" className="h-20 w-auto">
+              <ellipse cx="160" cy="70" rx="150" ry="65" fill="#6b8e23"/>
+              <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" fill="#fff" fontFamily="Arial" fontSize="45" fontWeight="bold">HALAGEL</text>
+              <circle cx="280" cy="35" r="18" fill="none" stroke="#fff" strokeWidth="3"/>
+              <text x="280" y="40" textAnchor="middle" dominantBaseline="middle" fill="#fff" fontFamily="Arial" fontSize="16" fontWeight="bold">R</text>
+            </svg>
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-green-600 to-green-800 bg-clip-text text-transparent mb-2">Helpdesk Ticketing System</h1>
+          <p className="text-gray-600 text-lg font-medium">IT Support Portal</p>
+          
+          {!isAdmin && (
+            <div className="mt-4 text-sm text-gray-600">
+              IT Admin? <button onClick={() => setShowLogin(true)} className="text-green-600 font-semibold hover:underline">Click here to login</button>
+            </div>
+          )}
+          
+          {isAdmin && (
+            <div className="mt-4 flex justify-center gap-3">
+              <button onClick={() => setShowSettings(true)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
+                <Settings className="w-4 h-4" /> Settings
+              </button>
+              <button onClick={handleLogout} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2">
+                <LogOut className="w-4 h-4" /> Logout
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Messages */}
+        {message.text && (
+          <div className={`mb-4 p-4 rounded-xl text-white font-semibold ${message.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+            {message.text}
+          </div>
+        )}
+
+        {/* Admin Badge */}
+        {isAdmin && (
+          <div className="mb-6 p-4 bg-green-100 border-2 border-green-500 rounded-xl text-green-800 font-bold text-center">
+            ✓ Logged in as Administrator
+          </div>
+        )}
+
+        {/* Stats (Admin Only) */}
+        {isAdmin && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-gradient-to-br from-yellow-400 to-orange-400 text-white p-6 rounded-2xl shadow-xl">
+              <div className="text-5xl font-bold mb-2">{filterByStatus('Waiting')}</div>
+              <div className="text-lg font-semibold opacity-90">Waiting</div>
+            </div>
+            <div className="bg-gradient-to-br from-blue-400 to-cyan-400 text-white p-6 rounded-2xl shadow-xl">
+              <div className="text-5xl font-bold mb-2">{filterByStatus('In Progress')}</div>
+              <div className="text-lg font-semibold opacity-90">In Progress</div>
+            </div>
+            <div className="bg-gradient-to-br from-green-400 to-emerald-400 text-white p-6 rounded-2xl shadow-xl">
+              <div className="text-5xl font-bold mb-2">{filterByStatus('Completed')}</div>
+              <div className="text-lg font-semibold opacity-90">Completed</div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Submit Form */}
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-8 border border-white/30">
+            <h2 className="text-3xl font-bold text-green-700 mb-6">📝 Submit New Request</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address <span className="text-red-500">*</span></label>
+                <input
+                  type="email"
+                  value={newTicket.email}
+                  onChange={(e) => setNewTicket({...newTicket, email: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                  placeholder="your.email@halagel.com"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Full Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newTicket.fullName}
+                  onChange={(e) => setNewTicket({...newTicket, fullName: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                  placeholder="John Doe"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Department <span className="text-red-500">*</span></label>
+                <select
+                  value={newTicket.department}
+                  onChange={(e) => setNewTicket({...newTicket, department: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                >
+                  <option value="">Select Department</option>
+                  {departments.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Request Type <span className="text-red-500">*</span></label>
+                <select
+                  value={newTicket.requestType}
+                  onChange={(e) => setNewTicket({...newTicket, requestType: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                >
+                  <option value="">Select Request Type</option>
+                  {requestTypes.map(type => (
+                    <option key={type.value} value={type.value}>{type.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Priority <span className="text-red-500">*</span></label>
+                <select
+                  value={newTicket.priority}
+                  onChange={(e) => setNewTicket({...newTicket, priority: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                >
+                  <option value="">Select Priority</option>
+                  <option value="Low">🟢 Low - Can wait a few days</option>
+                  <option value="Medium">🟡 Medium - Within 24 hours</option>
+                  <option value="High">🔴 High - Urgent, work blocked</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Description <span className="text-red-500">*</span></label>
+                <textarea
+                  value={newTicket.description}
+                  onChange={(e) => setNewTicket({...newTicket, description: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition h-32 resize-none"
+                  placeholder="Please provide detailed information..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Preferred Time</label>
+                <input
+                  type="datetime-local"
+                  value={newTicket.preferredTime}
+                  onChange={(e) => setNewTicket({...newTicket, preferredTime: e.target.value})}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition"
+                />
+              </div>
+              
+              <button
+                onClick={createTicket}
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-4 rounded-xl font-bold text-lg hover:from-green-700 hover:to-green-800 transition shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? '⏳ Submitting...' : '🚀 Submit Ticket'}
+              </button>
+            </div>
+          </div>
+
+          {/* Tickets List */}
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-8 border border-white/30">
+            <h2 className="text-3xl font-bold text-green-700 mb-6">
+              {isAdmin ? '🎫 All Tickets' : '📊 Recent Tickets'}
+            </h2>
+            <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
+              {tickets.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <div className="text-6xl mb-4">🎫</div>
+                  <p className="text-lg">No tickets yet</p>
+                </div>
+              ) : (
+                tickets.slice(0, isAdmin ? tickets.length : 5).map(ticket => (
+                  <div key={ticket.id} className={`bg-gray-50 p-6 rounded-2xl border-l-4 ${getPriorityColor(ticket.priority)} hover:shadow-lg transition`}>
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-xl font-bold text-green-700">#{ticket.id}</span>
+                      <span className={`px-4 py-2 rounded-full text-white text-sm font-bold ${getStatusColor(ticket.status)}`}>
+                        {ticket.status}
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-xs text-gray-500 uppercase mb-1">Name</div>
+                        <div className="font-semibold text-gray-800">{ticket.fullName}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-xs text-gray-500 uppercase mb-1">Department</div>
+                        <div className="font-semibold text-gray-800">{ticket.department}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-xs text-gray-500 uppercase mb-1">Request</div>
+                        <div className="font-semibold text-gray-800">{ticket.requestType}</div>
+                      </div>
+                      <div className="bg-white p-3 rounded-lg">
+                        <div className="text-xs text-gray-500 uppercase mb-1">Priority</div>
+                        <div className="font-semibold text-gray-800">{ticket.priority}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white p-3 rounded-lg mb-4">
+                      <div className="text-xs text-gray-500 uppercase mb-1">Description</div>
+                      <div className="text-gray-700">{ticket.description}</div>
+                    </div>
+                    
+                    <div className="text-xs text-gray-500">
+                      Submitted: {new Date(ticket.createdAt).toLocaleString()}
+                    </div>
+                    
+                    {isAdmin && ticket.status !== 'Completed' && (
+                      <div className="mt-4 flex gap-2">
+                        {ticket.status === 'Waiting' && (
+                          <button
+                            onClick={() => updateStatus(ticket.id, 'In Progress')}
+                            className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-2 px-4 rounded-lg font-semibold hover:from-blue-600 hover:to-cyan-600 transition"
+                          >
+                            ▶️ Start Working
+                          </button>
+                        )}
+                        {ticket.status === 'In Progress' && (
+                          <button
+                            onClick={() => updateStatus(ticket.id, 'Completed')}
+                            className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-2 px-4 rounded-lg font-semibold hover:from-green-600 hover:to-emerald-600 transition"
+                          >
+                            ✅ Mark Complete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Login Modal */}
+        {showLogin && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative">
+              <button onClick={() => setShowLogin(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <X className="w-6 h-6" />
+              </button>
+              <div className="flex justify-center mb-6">
+                <Lock className="w-16 h-16 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-center mb-6">Admin Login</h2>
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none mb-2"
+                placeholder="Enter admin password"
+              />
+              <p className="text-xs text-gray-500 mb-4">Default: admin123</p>
+              <button onClick={handleLogin} className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-3 rounded-xl font-bold hover:from-green-700 hover:to-green-800 transition">
+                Login
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Settings Modal */}
+        {showSettings && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative">
+              <button onClick={() => setShowSettings(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                <X className="w-6 h-6" />
+              </button>
+              <div className="flex justify-center mb-6">
+                <Settings className="w-16 h-16 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-center mb-6">Admin Settings</h2>
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">New Password (min 6 chars)</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <button onClick={saveSettings} className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-3 rounded-xl font-bold hover:from-green-700 hover:to-green-800 transition">
+                Save Settings
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default HelpdeskSystem;
